@@ -1,0 +1,118 @@
+{
+  "id": "eBuHLjkyW1jhxrLq",
+  "name": "chatbot-telegram-servicios-integrales",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node-telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Telegram Bot - ServiciosIntegralesBot"
+        }
+      }
+    },
+    {
+      "id": "node-typing",
+      "name": "Mostrar Escribiendo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [240, 0],
+      "parameters": {
+        "operation": "sendChatAction",
+        "chatId": "={{ $json.message.chat.id }}",
+        "action": "typing"
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Telegram Bot - ServiciosIntegralesBot"
+        }
+      }
+    },
+    {
+      "id": "node-agent",
+      "name": "Agente IA Seguridad Social",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [480, 0],
+      "parameters": {
+        "agentType": "conversationalAgent",
+        "text": "={{ $('Telegram Trigger').item.json.message.text }}",
+        "promptType": "define",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "Eres un asistente virtual de la empresa **Servicios Integrales**, especializado en afiliaciones a Seguridad Social en Colombia.\n\nTu misión es orientar a los usuarios sobre:\n- **EPS** (Entidad Promotora de Salud)\n- **ARL** (Administradora de Riesgos Laborales)\n- **AFP / Pensiones** (Colpensiones, Porvenir, Protección, Colfondos)\n- **CCF** (Caja de Compensación Familiar: Compensar, Colsubsidio, etc.)\n\n---\n\n**TIPOS DE AFILIACIÓN:**\n- **Dependiente**: empleado con contrato laboral — el empleador hace los aportes\n- **Independiente**: trabajador por cuenta propia — hace sus propios aportes (antes del día 15 de cada mes)\n- **Subsidiado**: personas sin capacidad de pago registradas en Sisbén\n\n**DOCUMENTOS REQUERIDOS (general):**\n- Cédula de ciudadanía o extranjería\n- Contrato de trabajo (dependientes) o RUT (independientes)\n- Formulario de afiliación firmado\n- Carta de asignación salarial\n- Datos de beneficiarios (cónyuge, hijos) si aplica\n\n**FECHAS CLAVE DE PAGO:**\n- Nómina (dependientes): hasta el último día hábil del mes\n- Independientes: antes del día 15 de cada mes\n- La mora genera intereses y puede suspender el servicio\n\n**PROCESO DE AFILIACIÓN (pasos):**\n1. El usuario escoge EPS, AFP y CCF de la lista disponible\n2. Diligencia el formulario de afiliación de cada entidad\n3. Adjunta documentos requeridos\n4. Servicios Integrales radica los documentos ante las entidades\n5. Confirmación de afiliación en 3-5 días hábiles\n\n**INTENCIONES QUE PUEDES ATENDER:**\n- Afiliación nueva a EPS, ARL, AFP o CCF\n- Cambio de EPS\n- Consulta de estado de trámite\n- Información sobre pagos y aportes\n- Documentos necesarios\n- Agregar/quitar beneficiarios\n- Novedades laborales (cambio de empleador, retiro, licencia)\n\n**REGLAS:**\n- Responde siempre en español, con tono amable y profesional\n- Sé conciso pero completo\n- Si el usuario necesita iniciar un trámite, pídele: nombre completo, número de cédula, tipo de vinculación (dependiente/independiente) y correo de contacto\n- Si la consulta supera tu capacidad, di: \"Para este caso te voy a conectar con uno de nuestros asesores. ¿Puedes compartirme tu nombre y número de contacto?\"\n- Nunca inventes información sobre entidades, valores exactos de aportes o resoluciones legales que no conoces con certeza"
+        }
+      }
+    },
+    {
+      "id": "node-model",
+      "name": "Claude Sonnet",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [480, 220],
+      "parameters": {
+        "model": "claude-sonnet-4-6",
+        "options": {
+          "maxTokens": 1024
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Anthropic - Claude API"
+        }
+      }
+    },
+    {
+      "id": "node-send",
+      "name": "Enviar Respuesta",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [720, 0],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Telegram Bot - ServiciosIntegralesBot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Mostrar Escribiendo", "type": "main", "index": 0}]]
+    },
+    "Mostrar Escribiendo": {
+      "main": [[{"node": "Agente IA Seguridad Social", "type": "main", "index": 0}]]
+    },
+    "Agente IA Seguridad Social": {
+      "main": [[{"node": "Enviar Respuesta", "type": "main", "index": 0}]]
+    },
+    "Claude Sonnet": {
+      "ai_languageModel": [[{"node": "Agente IA Seguridad Social", "type": "ai_languageModel", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  }
+}

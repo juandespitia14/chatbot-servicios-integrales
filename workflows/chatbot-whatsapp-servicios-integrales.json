@@ -1,0 +1,158 @@
+{
+  "id": "ANIqj7DtCp86iahR",
+  "name": "chatbot-whatsapp-servicios-integrales",
+  "active": false,
+  "nodes": [
+    {
+      "id": "node-webhook",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 300],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/chatbot/whatsapp",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "node-extract",
+      "name": "Extraer Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const body = $json.body;\nconst entry = body?.entry?.[0];\nconst changes = entry?.changes?.[0];\nconst value = changes?.value;\nconst message = value?.messages?.[0];\n\nif (!message?.text?.body) {\n  return { json: { skip: true, from: null, text: '', phone_number_id: null } };\n}\n\nreturn {\n  json: {\n    from: message.from,\n    text: message.text.body,\n    phone_number_id: value.metadata.phone_number_id,\n    message_id: message.id\n  }\n};"
+      }
+    },
+    {
+      "id": "node-classify",
+      "name": "Clasificar Intención",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const systemPrompt = 'Eres un clasificador de intenciones para un chatbot de afiliaciones a seguridad social en Colombia. Devuelve UNICAMENTE un JSON valido con esta estructura: {\"intent\": \"NOMBRE_INTENT\", \"confianza\": \"alta\", \"resumen\": \"descripcion breve\"}. Intenciones: AFILIACION_NUEVA (afiliarse por primera vez), DOCUMENTOS (que documentos necesita), CAMBIO_EPS (cambiar de EPS), ESTADO_TRAMITE (consultar estado), CONSULTA_PAGO (cuanto pagar y como), MORA_DEUDA (tiene deuda), BENEFICIARIOS (agregar o quitar beneficiarios), NOVEDAD_LABORAL (cambio empleador o retiro o licencia), ESCALAR_HUMANO (quiere hablar con asesor), SALUDO_DESPEDIDA (saludo o despedida), FUERA_DE_TEMA (no relacionado al negocio). Responde SOLO con el JSON.';\n\nlet classification;\ntry {\n  const response = await $helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.anthropic.com/v1/messages',\n    headers: {\n      'x-api-key': $env.ANTHROPIC_API_KEY,\n      'anthropic-version': '2023-06-01',\n      'content-type': 'application/json'\n    },\n    body: JSON.stringify({\n      model: 'claude-sonnet-4-6',\n      max_tokens: 150,\n      system: systemPrompt,\n      messages: [{ role: 'user', content: $json.text }]\n    })\n  });\n  const parsed = typeof response === 'object' ? response : JSON.parse(response);\n  const text = parsed?.content?.[0]?.text || '{}';\n  classification = JSON.parse(text);\n} catch(e) {\n  classification = { intent: 'FUERA_DE_TEMA', confianza: 'baja', resumen: 'Error al clasificar' };\n}\n\nreturn {\n  json: {\n    ...$json,\n    intent: classification.intent || 'FUERA_DE_TEMA',\n    confianza: classification.confianza || 'baja',\n    resumen: classification.resumen || ''\n  }\n};"
+      }
+    },
+    {
+      "id": "node-switch",
+      "name": "Router por Intención",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [1000, 300],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ ['AFILIACION_NUEVA', 'DOCUMENTOS'].includes($json.intent) ? 0 : $json.intent === 'SALUDO_DESPEDIDA' ? 1 : ['ESCALAR_HUMANO', 'FUERA_DE_TEMA'].includes($json.intent) ? 2 : 3 }}"
+      }
+    },
+    {
+      "id": "node-resp-afiliacion",
+      "name": "Responder Afiliación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 0],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const systemPrompt = 'Eres un asistente virtual de Servicios Integrales, empresa especializada en afiliaciones a seguridad social en Colombia. Responde en espanol colombiano, tono amable y profesional. Maximo 3 parrafos cortos optimizados para WhatsApp. Cuando pregunten sobre afiliacion nueva o documentos requeridos, explica: DOCUMENTOS BASE: cedula vigente, formulario de afiliacion firmado (nosotros lo suministramos), datos de beneficiarios si aplica. TRABAJADOR DEPENDIENTE: contrato de trabajo o carta salarial, el empleador realiza los aportes. TRABAJADOR INDEPENDIENTE: RUT activo, extracto bancario o declaracion de renta, paga sobre el 40% de sus ingresos. Al finalizar solicita amablemente: nombre completo, cedula, tipo de vinculacion (dependiente o independiente) y EPS de preferencia.';\n\nlet respuesta;\ntry {\n  const response = await $helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.anthropic.com/v1/messages',\n    headers: {\n      'x-api-key': $env.ANTHROPIC_API_KEY,\n      'anthropic-version': '2023-06-01',\n      'content-type': 'application/json'\n    },\n    body: JSON.stringify({\n      model: 'claude-sonnet-4-6',\n      max_tokens: 600,\n      system: systemPrompt,\n      messages: [{ role: 'user', content: $json.text }]\n    })\n  });\n  const parsed = typeof response === 'object' ? response : JSON.parse(response);\n  respuesta = parsed?.content?.[0]?.text || 'Lo siento, tuve un inconveniente. Escribe ASESOR para hablar con un agente.';\n} catch(e) {\n  respuesta = 'Lo siento, tuve un inconveniente. Escribe ASESOR para hablar con un agente.';\n}\n\nreturn {\n  json: {\n    from: $json.from,\n    phone_number_id: $json.phone_number_id,\n    respuesta\n  }\n};"
+      }
+    },
+    {
+      "id": "node-resp-saludo",
+      "name": "Responder Saludo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 250],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    from: $json.from,\n    phone_number_id: $json.phone_number_id,\n    respuesta: 'Hola! Bienvenido a *Servicios Integrales*\\n\\nSoy tu asistente virtual para tramites de seguridad social en Colombia. Puedo ayudarte con:\\n\\n- Afiliacion nueva (EPS, ARL, AFP, CCF)\\n- Documentos requeridos\\n- Estado de tu tramite\\n- Consultas de pago y aportes\\n- Cambio de EPS\\n- Novedades laborales\\n\\nEn que te puedo ayudar hoy?'\n  }\n};"
+      }
+    },
+    {
+      "id": "node-resp-escalar",
+      "name": "Responder Escalado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 500],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    from: $json.from,\n    phone_number_id: $json.phone_number_id,\n    respuesta: 'Entiendo tu solicitud. Te voy a comunicar con uno de nuestros asesores especializados para que te brinde atencion personalizada.\\n\\nPor favor espera un momento, un asesor se comunicara contigo en breve.\\n\\nSi tu consulta es urgente, tambien puedes contactarnos directamente por nuestro numero de atencion al cliente.'\n  }\n};"
+      }
+    },
+    {
+      "id": "node-resp-pendiente",
+      "name": "Responder Tramite Pendiente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 750],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    from: $json.from,\n    phone_number_id: $json.phone_number_id,\n    respuesta: 'Gracias por comunicarte con *Servicios Integrales*.\\n\\nEstoy procesando tu solicitud sobre ' + ($json.resumen || 'tu tramite') + '. Un asesor te contactara pronto para ayudarte.\\n\\nPuedo ayudarte con algo mas mientras tanto?'\n  }\n};"
+      }
+    },
+    {
+      "id": "node-send-wa",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 375],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "await $helpers.httpRequest({\n  method: 'POST',\n  url: 'https://graph.facebook.com/v21.0/' + $json.phone_number_id + '/messages',\n  headers: {\n    'Authorization': 'Bearer ' + $env.WHATSAPP_TOKEN,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({\n    messaging_product: 'whatsapp',\n    to: $json.from,\n    type: 'text',\n    text: { body: $json.respuesta }\n  })\n});\n\nreturn { json: { status: 'sent', to: $json.from } };"
+      }
+    },
+    {
+      "id": "node-respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1750, 375],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\" }",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [[{"node": "Extraer Mensaje", "type": "main", "index": 0}]]
+    },
+    "Extraer Mensaje": {
+      "main": [[{"node": "Clasificar Intención", "type": "main", "index": 0}]]
+    },
+    "Clasificar Intención": {
+      "main": [[{"node": "Router por Intención", "type": "main", "index": 0}]]
+    },
+    "Router por Intención": {
+      "main": [
+        [{"node": "Responder Afiliación", "type": "main", "index": 0}],
+        [{"node": "Responder Saludo", "type": "main", "index": 0}],
+        [{"node": "Responder Escalado", "type": "main", "index": 0}],
+        [{"node": "Responder Tramite Pendiente", "type": "main", "index": 0}]
+      ]
+    },
+    "Responder Afiliación": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Responder Saludo": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Responder Escalado": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Responder Tramite Pendiente": {
+      "main": [[{"node": "Enviar WhatsApp", "type": "main", "index": 0}]]
+    },
+    "Enviar WhatsApp": {
+      "main": [[{"node": "Responder OK", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}
