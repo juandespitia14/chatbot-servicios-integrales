@@ -4,8 +4,8 @@
       "command": "npx",
       "args": ["-y", "n8n-mcp"],
       "env": {
-        "N8N_API_URL": "http://localhost:5678",
-        "N8N_API_KEY": "your_n8n_api_key_here"
+        "N8N_API_URL": "https://cognify-ai.app.n8n.cloud",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwNzk5ZDc1NS04YTIyLTRlZmQtOGFiMi05NmQzNTc1MzE3OGQiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMzUzNjViZDUtYzRkMi00N2FiLTgyZjMtMGIyNmRmMjE2NmU5IiwiaWF0IjoxNzczMTU4ODAzfQ.lQM-24xYrvNE3oHoFj6onUmBUVxt3O4Y1OqAg3cKWF8"
       }
     }
   }
