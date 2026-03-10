@@ -1,0 +1,13 @@
+# Configuración local de Claude Code (permisos locales)
+.claude/settings.local.json
+
+# Variables de entorno con credenciales
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+
+# macOS
+.DS_Store
